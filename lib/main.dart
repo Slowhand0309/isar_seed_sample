@@ -6,6 +6,22 @@ import 'package:isar/isar.dart';
 import 'package:isar_seed_sample/spot.dart';
 import 'package:path_provider/path_provider.dart';
 
+// パフォーマンス測定用
+List<Map<String, dynamic>> generateJson(int count) {
+  final json = <Map<String, dynamic>>[];
+  final now = DateTime.now().microsecondsSinceEpoch;
+  for (var i = 0; i < count; i++) {
+    json.add({
+      'name': 'name_$i',
+      'latitude': 23.718989,
+      'longitude': 37.973620,
+      'createdAt': now,
+      'updatedAt': now,
+    });
+  }
+  return json;
+}
+
 Future<void> _loadSpots(Isar isar) async {
   try {
     final bytes = await rootBundle.load('assets/spots.json');
@@ -26,13 +42,42 @@ Future<void> _loadSpots(Isar isar) async {
   }
 }
 
+Future<void> _loadSpotsUseImportJson(Isar isar) async {
+  try {
+    final bytes = await rootBundle.load('assets/spots.json');
+    final jsonStr = const Utf8Decoder().convert(bytes.buffer.asUint8List());
+    final json = jsonDecode(jsonStr) as List;
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final importJson = json
+        .map((e) => {
+              'name': e['name'],
+              'latitude': double.parse(e['latitude']),
+              'longitude': double.parse(e['longitude']),
+              'createdAt': now,
+              'updatedAt': now,
+            })
+        .toList();
+    isar.writeTxn((isar) async {
+      await isar.spots.importJson(importJson);
+    });
+  } catch (e) {
+    debugPrint(e.toString());
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = await getApplicationSupportDirectory();
 
   final isar = await Isar.open(
       schemas: [SpotSchema], directory: dir.path, inspector: true);
-  await _loadSpots(isar);
+  final exists = await isar.spots.count() > 0;
+  if (!exists) {
+    debugPrint('Loading spots... ${DateTime.now().millisecondsSinceEpoch}');
+    await _loadSpots(isar);
+    // await _loadSpotsUseImportJson(isar);
+    debugPrint('finish ${DateTime.now().millisecondsSinceEpoch}');
+  }
 
   runApp(const MyApp());
 }
